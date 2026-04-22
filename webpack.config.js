@@ -8,6 +8,8 @@ module.exports = {
     popup: "./src/popup.jsx",
     content: "./src/content.jsx",
     background: "./src/background.jsx",
+    interceptor: "./src/utils/interceptor.js",
+    engine: "./src/engine.js",
     "shadow-root": "./src/shadow-root.css",
   },
   output: {

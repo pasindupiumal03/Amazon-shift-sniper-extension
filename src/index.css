@@ -3,33 +3,24 @@
 @tailwind utilities;
 
 @font-face {
-  font-family: "Poppins";
-  src: url("./assets/fonts/Poppins.ttf") format("truetype");
-  font-weight: 100 900;
-  font-style: normal;
-  font-display: swap;
+  font-family: 'Poppins';
+  src: url('./assets/fonts/Poppins.ttf') format('truetype');
 }
 
-* {
+html, body {
   margin: 0;
   padding: 0;
-  box-sizing: border-box;
-  font-family: "Poppins";
+  background-color: #111827; /* Gray-900 - Removes white background */
   overflow: hidden;
-}
-html {
-  overflow: hidden;
-}
-body {
-  width: 400px;
-  height: 600px;
-  min-height: 600px;
-  overflow: hidden;
-  background: #f9fafb;
-  color: #000000;
+  font-family: 'Poppins', sans-serif;
 }
 
-#react-target {
-  width: 100%;
-  height: 100%;
+/* Hide scrollbar but keep functionality for the Logs */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
 }
