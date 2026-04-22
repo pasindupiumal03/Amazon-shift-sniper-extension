@@ -1,8 +1,6 @@
 import { initPopup } from "./shadowRoot.jsx";
 import { getFromStorage, saveToStorage } from "./controllers/storageController";
 
-let isJobSelected = false;
-
 const log = (msg) => console.log(`[Shift Sniper] ${msg}`);
 
 const stopSniperEngine = () => {
@@ -11,7 +9,6 @@ const stopSniperEngine = () => {
 };
 
 const injectSniperEngine = () => {
-    // Clean up any existing instances first
     const existing = document.getElementById('amazon-sniper-engine');
     if (existing) existing.remove();
 
@@ -19,43 +16,39 @@ const injectSniperEngine = () => {
     script.id = 'amazon-sniper-engine';
     script.src = chrome.runtime.getURL('engine.js');
     (document.head || document.documentElement).appendChild(script);
-    log("High-speed engine injected via secure link.");
 };
 
-const getParamsFromURL = () => {
-    const getParam = (name) => {
-        const regex = new RegExp('[?&]' + name + '=([^&#]*)');
-        const results = regex.exec(window.location.href);
-        return results ? decodeURIComponent(results[1]) : null;
-    };
-
-    let scheduleId = getParam('scheduleId');
-    if (scheduleId && scheduleId.includes('~')) {
-        scheduleId = scheduleId.split('~')[0];
-    }
-
-    return {
-        jobId: getParam('jobId'),
-        scheduleId: scheduleId,
-        locale: getParam('locale') || 'en-US',
-        domain: window.location.hostname
-    };
+const extractID = (url, key) => {
+    try {
+        const regex = new RegExp(`[?&]${key}=([^&#]*)`);
+        const results = regex.exec(url);
+        let id = results ? decodeURIComponent(results[1]) : null;
+        if (id && id.includes('~')) id = id.split('~')[0];
+        return id;
+    } catch(e) { return null; }
 };
 
-const updateStatus = (status) => {
-    saveToStorage({ status });
-};
-
-const addLog = async (logObj) => {
-    const data = await getFromStorage(["logs"]);
-    const logs = data.logs || [];
-    const newLogs = [logObj, ...logs].slice(0, 20); // Keep last 20 logs
-    saveToStorage({ logs: newLogs });
+const parseMultiSchedules = (text) => {
+    if (!text) return [];
+    const lines = text.split(/\r?\n/);
+    const schedules = [];
+    lines.forEach(line => {
+        const schId = extractID(line, 'scheduleId');
+        const jobId = extractID(line, 'jobId');
+        if (schId && !schedules.find(s => s.scheduleId === schId)) {
+            schedules.push({ scheduleId: schId, jobId: jobId || 'N/A' });
+        }
+    });
+    return schedules;
 };
 
 const startSniper = async () => {
-    const params = getParamsFromURL();
-    if (!params.scheduleId) {
+    const currentParams = {
+        jobId: extractID(window.location.href, 'jobId'),
+        scheduleId: extractID(window.location.href, 'scheduleId')
+    };
+
+    if (!currentParams.scheduleId) {
         updateStatus("Error: No Schedule ID");
         return;
     }
@@ -63,28 +56,42 @@ const startSniper = async () => {
     injectSniperEngine();
     updateStatus("Monitoring...");
 
-    // Sync initial config
-    const config = await getFromStorage(["interval", "mode"]);
+    // Sync initial config & extra schedules
+    const data = await getFromStorage(["interval", "mode", "extraLinks"]);
+    const extraSchedules = parseMultiSchedules(data.extraLinks);
+    
+    // Build initial monitored list
+    const monitoredIDs = [
+        { id: currentParams.scheduleId, status: "Waiting", isCurrent: true },
+        ...extraSchedules.map(s => ({ id: s.scheduleId, status: "Waiting", isCurrent: false }))
+    ];
+    saveToStorage({ monitoredIDs });
+
     setTimeout(() => {
         window.dispatchEvent(new CustomEvent('SNIPER_CONFIG', { 
-            detail: { interval: config.interval || 800, mode: config.mode || 'auto' } 
+            detail: { 
+                interval: data.interval || 800, 
+                mode: data.mode || 'auto',
+                currentSchedule: currentParams,
+                extraSchedules: extraSchedules
+            } 
         }));
-    }, 500);
+    }, 600);
 };
 
-const init = async () => {
-    // Set default logs if empty
-    const logData = await getFromStorage(["logs"]);
-    if (!logData.logs) saveToStorage({ logs: [] });
+const updateStatus = (status) => saveToStorage({ status });
 
+const init = async () => {
     const data = await getFromStorage(["isEnabled"]);
     const isEnabled = data.isEnabled !== false; 
 
     if (isEnabled) startSniper();
 
-    // Events from the Injected Engine
-    window.addEventListener('SNIPER_STATUS', (e) => updateStatus(e.detail));
-    window.addEventListener('SNIPER_LOG', (e) => addLog(e.detail));
+    // Event Handlers
+    window.addEventListener('SNIPER_STATUS_MULTI', (e) => {
+        saveToStorage({ monitoredIDs: e.detail });
+    });
+
     window.addEventListener('SNIPER_SUCCESS', () => {
         updateStatus("Success!");
         saveToStorage({ isEnabled: false });
@@ -95,11 +102,14 @@ const init = async () => {
             message.isEnabled ? startSniper() : stopSniperEngine();
         }
         if (message.type === "UPDATE_CONFIG") {
-            window.dispatchEvent(new CustomEvent('SNIPER_CONFIG', { detail: message.config }));
+            const config = { ...message.config };
+            if (config.extraLinks !== undefined) {
+                config.extraSchedules = parseMultiSchedules(config.extraLinks);
+            }
+            window.dispatchEvent(new CustomEvent('SNIPER_CONFIG', { detail: config }));
         }
     });
 
-    // Network Interceptor injection
     const interceptor = document.createElement('script');
     interceptor.id = 'amazon-interceptor';
     if (!document.getElementById('amazon-interceptor')) {

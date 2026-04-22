@@ -1,41 +1,36 @@
 (async () => {
     let isTerminated = false;
-    let pollCount = 0;
     
     // Config State
     let config = {
         interval: 800,
-        mode: 'auto'
+        mode: 'auto',
+        currentSchedule: null,
+        extraSchedules: []
     };
 
     // Tracking State
     let currentInterval = 800;
-    let isJobPosted = false;
-    let isScheduleActive = false;
+    let pollIndex = 0;
+    let monitoredList = []; 
     let consecutiveErrors = 0;
 
-    const addLog = (msg) => {
-        const time = new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
-        window.dispatchEvent(new CustomEvent('SNIPER_LOG', { detail: { time, msg } }));
+    const updateUI = () => {
+        window.dispatchEvent(new CustomEvent('SNIPER_STATUS_MULTI', { detail: monitoredList }));
     };
 
     const getParam = (name) => {
         const regex = new RegExp('[?&]' + name + '=([^&#]*)');
         const results = regex.exec(window.location.href);
-        return results ? decodeURIComponent(results[1]) : null;
+        let id = results ? decodeURIComponent(results[1]) : null;
+        if (id && id.includes('~')) id = id.split('~')[0];
+        return id;
     };
 
-    let scheduleId = getParam('scheduleId');
-    let jobId = getParam('jobId');
-    if (scheduleId && scheduleId.includes('~')) scheduleId = scheduleId.split('~')[0];
-
-    const locale = getParam('locale') || 'en-US';
+    const SCH_ID = getParam('scheduleId');
+    const JOB_ID = getParam('jobId');
     const domain = window.location.hostname;
-    
-    if (!scheduleId || !jobId) return;
-
-    const SCH_URL = `https://${domain}/application/api/job/get-schedule-details/${scheduleId}?locale=${locale}`;
-    const JOB_URL = `https://${domain}/application/api/job/${jobId}?locale=${locale}`;
+    const locale = getParam('locale') || 'en-US';
 
     const findToken = () => {
         const containers = ['accessToken', 'idToken', 'sessionToken', 'HVH_ACCESS_TOKEN', 'auth_storage'];
@@ -52,9 +47,17 @@
 
     const fastClick = () => {
         const triggerClick = () => {
-            const button = document.querySelector('[data-test-component="StencilReactButton"]') || 
-                           Array.from(document.querySelectorAll('button')).find(el => el.textContent.includes('Select this job'));
+            // Priority 1: Search by container class + button
+            // Priority 2: Search all buttons for the exact "Select this job" text
+            let button = document.querySelector('.selectJobButtonContainer button');
+            
+            if (!button || !button.textContent.includes('Select this job')) {
+                button = Array.from(document.querySelectorAll('button'))
+                        .find(el => el.textContent.trim().toLowerCase().includes('select this job'));
+            }
+
             if (button) {
+                // High-speed event simulation for Amazon's React architecture
                 ['mousedown', 'mouseup', 'click'].forEach(type => {
                     button.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: window }));
                 });
@@ -63,34 +66,33 @@
             return false;
         };
 
-        if (triggerClick()) {
-            addLog("Click successful!");
-            return true;
-        } else {
-            addLog("Button not found, retrying...");
-            // Retry every 50ms for 2 seconds (requirement #5)
+        if (!triggerClick()) {
             let retries = 0;
             const retryInterval = setInterval(() => {
                 retries++;
-                if (triggerClick() || retries > 40) {
-                    clearInterval(retryInterval);
-                    if (retries <= 40) addLog("Button found and clicked after retry.");
-                }
+                if (triggerClick() || retries > 40) clearInterval(retryInterval);
             }, 50);
-            return false;
         }
     };
 
     const poll = async () => {
-        if (isTerminated) return;
+        if (isTerminated || monitoredList.length === 0) return;
         const token = findToken();
-        if (!token) {
-            window.dispatchEvent(new CustomEvent('SNIPER_STATUS', { detail: 'Error: Auth Expired' }));
-            return;
-        }
+        if (!token) return;
 
-        const url = (pollCount % 2 === 0) ? SCH_URL : JOB_URL;
-        pollCount++;
+        const target = monitoredList[pollIndex % monitoredList.length];
+        pollIndex++;
+
+        // Mark polling
+        monitoredList.forEach(m => m.isPolling = false);
+        target.isPolling = true;
+        updateUI();
+
+        // Determine URL based on ID type (JOB vs SCH)
+        const isJob = target.id.startsWith('JOB-');
+        const url = isJob 
+            ? `https://${domain}/application/api/job/${target.id}?locale=${locale}`
+            : `https://${domain}/application/api/job/get-schedule-details/${target.id}?locale=${locale}`;
 
         try {
             const res = await fetch(url, {
@@ -98,81 +100,84 @@
                 credentials: 'include'
             });
 
-            // Adaptive backoff logic (requirement #2)
             if (res.status === 429 || res.status === 403) {
                 consecutiveErrors++;
                 if (config.mode === 'auto') {
-                    currentInterval = Math.min(3000, currentInterval + 400); // Gradual increase
-                    addLog(`Rate limited (${res.status}). Slowing down to ${currentInterval}ms`);
+                    currentInterval = Math.min(4000, currentInterval + 500);
                     updateLoop();
                 }
-                window.dispatchEvent(new CustomEvent('SNIPER_STATUS', { detail: `Rate Limited (${res.status})` }));
                 return;
             }
 
             if (res.ok) {
-                // Recovery logic if stable
                 if (consecutiveErrors > 0) {
                     consecutiveErrors = 0;
                     if (config.mode === 'auto') {
                         currentInterval = Math.max(config.interval, currentInterval - 200);
-                        addLog(`Connection stable. Recovering interval: ${currentInterval}ms`);
                         updateLoop();
                     }
                 }
 
                 const json = await res.json();
                 const data = json?.data;
+                
+                // Extract status based on request type
+                const status = isJob ? data?.postingStatus : data?.status;
+                const available = isJob ? 1 : (data?.laborDemandAvailableCount || 0);
 
-                if (url === SCH_URL) {
-                    const status = data?.status;
-                    const available = data?.laborDemandAvailableCount || 0;
-                    
-                    if (status === "ACTIVE" && available > 0) {
-                        if (!isScheduleActive) { // Trigger only on change (requirement #4)
-                            isScheduleActive = true;
-                            addLog("Schedule AVAILABLE! Triggering click...");
-                            fastClick();
-                            isTerminated = true;
-                            window.dispatchEvent(new CustomEvent('SNIPER_SUCCESS'));
-                        }
-                    }
-                    window.dispatchEvent(new CustomEvent('SNIPER_STATUS', { detail: `Sch: ${status || 'N/A'} (${available})` }));
-                } else {
-                    const status = data?.postingStatus;
-                    if (status === "POSTED" && !isJobPosted) {
-                        isJobPosted = true;
-                        addLog("Job POSTED detection active!");
-                    }
-                    window.dispatchEvent(new CustomEvent('SNIPER_STATUS', { detail: `Job: ${status || 'N/A'}` }));
+                target.status = status;
+                updateUI();
+
+                // Trigger ONLY if a schedule becomes active
+                if (!isJob && status === "ACTIVE" && available > 0) {
+                    fastClick();
+                    isTerminated = true;
+                    window.dispatchEvent(new CustomEvent('SNIPER_SUCCESS'));
                 }
             }
-        } catch (e) {
-            addLog("Network failure. Retrying...");
-        }
+        } catch (e) {}
     };
 
     let timer;
     const updateLoop = () => {
         if (timer) clearInterval(timer);
-        timer = setInterval(poll, currentInterval);
+        const stepInterval = Math.max(100, currentInterval / monitoredList.length);
+        timer = setInterval(poll, stepInterval);
     };
 
-    // Listen for config changes from popup
+    const rebuildQueue = () => {
+        const list = [];
+        // 1. Add Master Job ID
+        if (JOB_ID) {
+            list.push({ id: JOB_ID, status: "Waiting", isCurrent: true, isPolling: false });
+        }
+        // 2. Add Current Page Schedule
+        if (SCH_ID) {
+            list.push({ id: SCH_ID, status: "Waiting", isCurrent: true, isPolling: false });
+        }
+        // 3. Add Extra Schedules
+        if (config.extraSchedules) {
+            config.extraSchedules.forEach(s => {
+                if (s.scheduleId !== SCH_ID) {
+                    list.push({ id: s.scheduleId, status: "Waiting", isCurrent: false, isPolling: false });
+                }
+            });
+        }
+        monitoredList = list;
+        updateUI();
+        updateLoop();
+    };
+
     window.addEventListener('SNIPER_CONFIG', (e) => {
         config = { ...config, ...e.detail };
-        currentInterval = config.interval;
-        addLog(`Config updated: ${currentInterval}ms (${config.mode} mode)`);
-        updateLoop();
+        currentInterval = config.interval || 800;
+        rebuildQueue();
     });
 
-    // Clean Stop (Requirement: Avoid tab refresh)
     window.addEventListener('SNIPER_STOP', () => {
         isTerminated = true;
         if (timer) clearInterval(timer);
-        addLog("Sniper Engine STOPPED.");
     });
 
-    updateLoop();
-    addLog("Sniper Engine Initialized.");
+    rebuildQueue();
 })();
