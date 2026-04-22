@@ -10,11 +10,16 @@
   font-display: swap;
 }
 
-/* Shadow root specific styles */
 :host {
   display: block;
-  width: 100%;
-  height: 100%;
+  z-index: 2147483647 !important;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: 'Poppins', sans-serif;
 }
 
 #react-target {
@@ -22,19 +27,7 @@
   height: 100%;
 }
 
-/* Override body styles for shadow root context */
-body {
-  width: 100%;
-  min-height: 100%;
-  overflow: hidden;
-  background: #f9fafb;
-  color: #000000;
-  font-family: "Poppins", sans-serif;
+/* Base styles to protect against host page inheritance */
+div, h1, p, span {
+  line-height: normal;
 }
-
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-  font-family: "Poppins", sans-serif;
-} 

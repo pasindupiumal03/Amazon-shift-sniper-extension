@@ -1,9 +1,18 @@
 {
-  "name": "Extension Name",
+  "name": "Amazon Shift Sniper",
   "version": "1.0",
-  "description": "",
+  "description": "Automates job schedule selection on Amazon hiring pages.",
   "manifest_version": 3,
-  "content_scripts": [{ "matches": ["<all_urls>"], "js": ["content.js"] }],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://hiring.amazon.com/*",
+        "https://hiring.amazon.ca/*"
+      ],
+      "js": ["content.js"],
+      "css": ["shadow-root.css"]
+    }
+  ],
   "action": {
     "default_popup": "popup.html"
   },
@@ -17,5 +26,15 @@
     "64": "./assets/icons/64.png",
     "128": "./assets/icons/128.png"
   },
-  "permissions": ["storage"]
+  "permissions": ["storage", "tabs", "scripting"],
+  "host_permissions": [
+    "https://hiring.amazon.com/*",
+    "https://hiring.amazon.ca/*"
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["engine.js", "interceptor.js", "shadow-root.css", "assets/*"],
+      "matches": ["https://hiring.amazon.com/*", "https://hiring.amazon.ca/*"]
+    }
+  ]
 }
