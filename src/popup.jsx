@@ -7,18 +7,55 @@ const Popup = () => {
     const [isEnabled, setIsEnabled] = useState(true);
     const [status, setStatus] = useState("Idle");
     const [interval, setIntervalVal] = useState(800);
+    const [clickInterval, setClickInterval] = useState(0); // 0 = Off
     const [mode, setMode] = useState("auto");
     const [extraLinks, setExtraLinks] = useState("");
     const [monitoredIDs, setMonitoredIDs] = useState([]);
+    const [linkInput, setLinkInput] = useState("");
+
+    const extractScheduleId = (url) => {
+        const regex = /[?&]scheduleId=([^&#]*)/;
+        const match = url.match(regex);
+        return match ? decodeURIComponent(match[1]).split('~')[0] : null;
+    };
+
+    const handleAddLink = () => {
+        if (!linkInput.trim()) return;
+        
+        // Support bulk pasting by splitting on any whitespace or newlines
+        const potentialParts = linkInput.split(/[\s\n]+/).filter(p => p.trim());
+        const validLinks = potentialParts.filter(p => p.includes('scheduleId=') || p.startsWith('http'));
+        
+        if (validLinks.length > 0) {
+            const currentLinksArr = extraLinks ? extraLinks.split('\n').filter(l => l.trim()) : [];
+            // Filter out duplicates
+            const uniqueNewLinks = validLinks.filter(l => !currentLinksArr.includes(l));
+            const updatedLinks = [...currentLinksArr, ...uniqueNewLinks];
+            handleLinksChange(updatedLinks.join('\n'));
+        }
+        
+        setLinkInput("");
+    };
+
+    const handleClearAll = () => {
+        handleLinksChange("");
+    };
+
+    const handleRemoveLink = (index) => {
+        const links = extraLinks.split('\n').filter(l => l.trim());
+        links.splice(index, 1);
+        handleLinksChange(links.join('\n'));
+    };
 
     useEffect(() => {
-        getFromStorage(["isEnabled", "status", "interval", "mode", "extraLinks", "monitoredIDs"]).then((data) => {
+        getFromStorage(["isEnabled", "status", "interval", "mode", "extraLinks", "monitoredIDs", "clickInterval"]).then((data) => {
             if (data.isEnabled !== undefined) setIsEnabled(data.isEnabled);
             if (data.status) setStatus(data.status);
             if (data.interval) setIntervalVal(data.interval);
             if (data.mode) setMode(data.mode);
             if (data.extraLinks) setExtraLinks(data.extraLinks);
             if (data.monitoredIDs) setMonitoredIDs(data.monitoredIDs);
+            if (data.clickInterval) setClickInterval(data.clickInterval);
         });
 
         const listener = (changes) => {
@@ -42,11 +79,13 @@ const Popup = () => {
     const handleReset = () => {
         const defaults = {
             interval: 800,
+            clickInterval: 0,
             mode: "auto",
             extraLinks: "",
             monitoredIDs: []
         };
         setIntervalVal(defaults.interval);
+        setClickInterval(defaults.clickInterval);
         setMode(defaults.mode);
         setExtraLinks(defaults.extraLinks);
         saveToStorage(defaults);
@@ -58,6 +97,13 @@ const Popup = () => {
         setIntervalVal(v);
         saveToStorage({ interval: v });
         syncConfig({ interval: v });
+    };
+
+    const handleClickIntervalChange = (val) => {
+        const v = parseInt(val);
+        setClickInterval(v);
+        saveToStorage({ clickInterval: v });
+        syncConfig({ clickInterval: v });
     };
 
     const handleLinksChange = (val) => {
@@ -91,7 +137,7 @@ const Popup = () => {
             <div className="flex items-center justify-between mb-4 border-b border-gray-800 pb-3">
                 <div className="flex items-center gap-2">
                     <div className="p-1.5 bg-orange-500 rounded-lg shadow-inner">
-                        <img src="./assets/icons/32.png" className="w-5 h-5 invert" alt="logo" />
+                        <img src="./assets/icons/32.png" className="w-5 h-5" alt="logo" />
                     </div>
                     <h1 className="text-lg font-bold tracking-tight">Shift Sniper</h1>
                 </div>
@@ -127,32 +173,57 @@ const Popup = () => {
 
             {/* Multi-Monitor Section */}
             <div className="space-y-2 mb-4">
-                <label className="text-[10px] text-gray-500 font-bold uppercase tracking-wider pl-1 font-mono">Additional Schedule Links</label>
-                <textarea 
-                    className="w-full bg-black/40 border border-gray-800 rounded-xl p-2 text-[10px] text-gray-300 focus:outline-none focus:border-orange-500/50 no-scrollbar h-20 placeholder-gray-700" 
-                    placeholder="Paste extra links here..."
-                    value={extraLinks}
-                    onChange={(e) => handleLinksChange(e.target.value)}
-                />
-            </div>
-
-            {/* Active Monitoring List */}
-            <div className="bg-gray-800/20 rounded-xl border border-gray-800 p-2 mb-4 max-h-32 overflow-y-auto no-scrollbar">
-                <div className="text-[10px] font-bold text-gray-500 mb-2 border-b border-gray-800 pb-1 flex justify-between px-1">
-                    <span>MONITORED IDS</span>
-                    <span>STATUS</span>
+                <div className="flex items-center justify-between pl-1">
+                    <label className="text-[10px] text-gray-500 font-bold uppercase tracking-wider font-mono">Additional Schedule Links</label>
+                    {extraLinks && extraLinks.trim() && (
+                        <button onClick={handleClearAll} className="text-[9px] text-red-500 hover:text-red-400 font-bold uppercase tracking-tighter transition-all">Clear All</button>
+                    )}
                 </div>
-                <div className="space-y-1.5">
-                    {monitoredIDs.length > 0 ? monitoredIDs.map((sch, i) => (
-                        <div key={i} className="flex justify-between items-center text-[10px] px-1 font-mono">
-                            <span className={sch.isCurrent ? "text-orange-400 font-bold" : "text-gray-400"}>
-                                {sch.id} {sch.isCurrent && " (Cur)"}
-                                {sch.isPolling && <span className="text-blue-400 ml-2 animate-pulse text-[8px] uppercase">● Polling</span>}
-                            </span>
-                            <span>{getStatusIcon(sch.status)}</span>
+                <div className="flex gap-2">
+                    <input 
+                        type="text"
+                        className="flex-grow bg-black/40 border border-gray-800 rounded-xl px-3 py-2 text-[11px] text-gray-300 focus:outline-none focus:border-orange-500/50"
+                        placeholder="Paste link(s) and hit Enter..."
+                        value={linkInput}
+                        onChange={(e) => setLinkInput(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleAddLink()}
+                    />
+                    <button 
+                        onClick={handleAddLink}
+                        className="bg-orange-500 hover:bg-orange-600 p-2.5 rounded-xl transition-all shadow-lg shadow-orange-500/20"
+                    >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="20 6 9 17 4 12"></polyline>
+                        </svg>
+                    </button>
+                </div>
+
+                {/* Links List */}
+                <div className="max-h-32 overflow-y-auto no-scrollbar space-y-1.5 pt-1 pr-0.5">
+                    {extraLinks.split('\n').filter(l => l.trim()).map((link, idx) => {
+                        const sid = extractScheduleId(link);
+                        return (
+                            <div key={idx} className="flex items-center justify-between bg-gray-800/40 border border-gray-700/30 rounded-lg px-2 py-1.5 group hover:border-gray-600/50 transition-all">
+                                <div className="flex flex-col overflow-hidden">
+                                    <span className="text-[8px] text-gray-600 uppercase font-bold leading-none mb-0.5">SID-{idx+1}</span>
+                                    <span className="text-[10px] text-orange-300 font-mono font-medium truncate">{sid || "Extracted ID"}</span>
+                                </div>
+                                <button 
+                                    onClick={() => handleRemoveLink(idx)}
+                                    className="text-gray-600 hover:text-red-400 p-1 rounded-md hover:bg-red-400/10 transition-all md:opacity-0 group-hover:opacity-100 flex-shrink-0"
+                                >
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                                    </svg>
+                                </button>
+                            </div>
+                        );
+                    })}
+                    {(!extraLinks || !extraLinks.trim()) && (
+                        <div className="text-center py-4 border-2 border-dashed border-gray-800/50 rounded-xl bg-gray-800/10">
+                            <div className="text-[10px] text-gray-600 font-medium italic">Ready for bulk paste...</div>
                         </div>
-                    )) : (
-                        <div className="text-center py-2 text-[9px] text-gray-600 uppercase font-bold tracking-widest">No Active Targets</div>
                     )}
                 </div>
             </div>
@@ -160,7 +231,7 @@ const Popup = () => {
             {/* Config Panel */}
             <div className="space-y-3 bg-gray-800/30 p-3 rounded-xl border border-gray-700/30">
                 <div className="flex items-center justify-between">
-                    <label className="text-[11px] text-gray-400 font-bold tracking-wide">INTERVAL: <span className="text-orange-300 font-mono">{interval}ms</span></label>
+                    <label className="text-[11px] text-gray-400 font-bold tracking-wide uppercase">Polling Interval: <span className="text-orange-300 font-mono">{interval}ms</span></label>
                 </div>
                 <input 
                     type="range" min="100" max="2000" step="50"
@@ -170,6 +241,16 @@ const Popup = () => {
                 />
 
                 <div className="flex items-center justify-between pt-1">
+                    <label className="text-[11px] text-gray-400 font-bold tracking-wide uppercase">Regular Click: <span className="text-orange-300 font-mono">{clickInterval === 0 ? "OFF" : clickInterval + "s"}</span></label>
+                </div>
+                <input 
+                    type="range" min="0" max="60" step="5"
+                    value={clickInterval}
+                    onChange={(e) => handleClickIntervalChange(e.target.value)}
+                    className="w-full accent-orange-500 h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer"
+                />
+
+                <div className="flex items-center justify-between pt-1 border-t border-gray-800 mt-2">
                     <label className="text-[11px] text-gray-400 font-bold tracking-wide uppercase">Adaptive Protection</label>
                     <button 
                         onClick={toggleMode}
