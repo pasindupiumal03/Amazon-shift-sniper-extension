@@ -1,67 +1,81 @@
-# 🎯 Amazon Shift Sniper PRO v1.2
+# Amazon Shift Sniper PRO
 
-**The ultimate high-performance automation suite for Amazon Hiring Portal.**  
-Designed to secure the most competitive warehouse shifts with sub-100ms reaction times, multi-target monitoring, and advanced anti-ban protection.
+An advanced, enterprise-grade automation suite engineered specifically for the Amazon Hiring Portal. Designed to provide candidates with a decisive advantage in securing high-demand shifts through ultra-low latency monitoring and high-frequency interaction.
 
----
-
-## ⚡ Key Features
-
-### 🔍 Multi-Schedule Parallel Monitoring
-Monitor several job shifts at once without opening multiple tabs. Paste your additional schedule links into the PRO interface, and the engine handles the background polling autonomously.
-
-### 🛡️ Adaptive Rate-Limit Protection
-Equipped with an **Exponential Backoff Engine**. If Amazon detects high-frequency traffic, the sniper automatically slows down (429/403 detection) and gradually recovers speed once the connection is stable, keeping your account stealthy and safe.
-
-### 🏎️ Sequential Rotation System
-Instead of spamming requests, the engine rotates through your monitored targets sequentially. This distributes the requests across your chosen interval, ensuring a high check frequency without bloating the network footprint.
-
-### 🚀 High-Speed Main-World Injection
-By injecting the core engine directly into the webpage's **Main World**, we bypass Chrome's Isolated World latency. This allows the sniper to interact with React buttons and API headers with zero lag.
-
-### 🎯 Precision Auto-Click
-Specifically tuned to target the "Select this job" button container. Once availability is detected, it executes a high-speed event sequence (`mousedown` → `mouseup` → `click`) to beat manual clickers every time.
+![Version](https://img.shields.io/badge/Version-1.2-orange?style=for-the-badge)
+![Platform](https://img.shields.io/badge/Platform-Chrome_Extension-blue?style=for-the-badge)
+![Performance](https://img.shields.io/badge/Performance-Ultra--Low_Latency-green?style=for-the-badge)
 
 ---
 
-## 🛠️ How to Use
+## 🚀 Core Features
 
-1.  **Clone/Download** the repository.
-2.  **Build the Project**:
-    ```bash
-    npm install
-    npm run build:dev
-    ```
-3.  **Load in Chrome**:
-    - Go to `chrome://extensions/`
-    - Enable **Developer Mode**.
-    - Click **Load Unpacked** and select the `/dist` folder.
-4.  **Start Sniping**:
-    - Navigate to an Amazon Job Opportunity page.
-    - Open the Extension Popup.
-    - (Optional) Paste additional schedule links for multi-monitoring.
-    - Click **START** and let the engine hunt for your shift.
+### ⚡ "Fast-Click" Interaction Engine
+*   **Shadow DOM Penetration**: Advanced recursive logic to bypass Amazon's Stencil.js/Shadow DOM encapsulation, targeting buttons that standard extensions can't see.
+*   **Event Flooding (Burst Mode)**: Executes a high-speed sequence of `pointerdown`, `mousedown`, `pointerup`, and `click` events (10 clicks per burst) to ensure sub-millisecond registration.
+*   **Pre-Cache Optimization**: Automatically scans and caches button references every 500ms, ensuring zero-latency response when a shift becomes available.
 
----
+### 🔄 Dynamic Multi-Monitor System
+*   **Bulk Link Management**: Seamlessly monitor dozens of shifts simultaneously. Supports **Bulk Paste**—simply paste a block of text containing multiple URLs, and the engine will extract them automatically.
+*   **Intelligent Schedule ID Extraction**: Automatically parses and displays specific **Schedule IDs** for every link, making it easy to track exactly what you are monitoring.
+*   **Rotating Polling Queue**: Cyclically rotates through the current page and all additional links to maximize coverage without triggering security flags.
+*   **Quick Management**: Interactive list with "Hover-to-Delete" and "Clear All" functionality for rapid configuration.
 
-## ⚙️ Advanced Configuration
+### 🛡️ Safety & Rate-Limit Protection
+*   **Adaptive Polling (Auto-Mode)**: Dynamically adjusts polling frequency (200ms - 5000ms) based on server health and rate-limit (429) signals.
+*   **Anti-Detection Handshake**: Operates within the page's "Main World" to inherit active session tokens and CSRF headers, making requests indistinguishable from legitimate user behavior.
+*   **Automatic 403 Recovery**: Detects session expiration or Forbidden (403) errors and pauses for 60 seconds to allow the session to stabilize.
 
--   **Polling Interval (100ms - 2000ms)**: Fine-tune how fast the engine checks for availability.
--   **Adaptive Mode Toggle**: Enable for maximum safety; disable for aggressive speed in low-traffic environments.
--   **One-Click Reset**: Instantly restore default safe settings and clear all additional monitor targets.
+### 🎨 Premium Interface (PRO UI)
+*   **Glassmorphism Design**: A sleek, dark-mode interface built with React and Tailwind CSS.
+*   **Zero-Distraction UI**: All scrollbars are hidden (but fully functional) to maintain a clean, professional look.
+*   **Real-Time Status Feed**: Provides a live breakdown of every monitored schedule, including individual status (Active, Waiting, Error) and polling activity.
 
 ---
 
-## 🏗️ Technical Architecture
+## 📦 Installation Guide
 
--   **Frontend**: React + TailwindCSS (Modern, sleek dark UI).
--   **Build System**: Webpack (Optimized for Manifest V3).
--   **Communication**: CustomEvent Bridge for near-instant communication between the Injected Engine and the Content Script.
--   **Auth Discovery**: Dynamic token discovery across `localStorage`, `sessionStorage`, and `Cookies` to ensure valid API headers at all times.
+1.  **Download**: Extract the provided extension package to your computer.
+2.  **Developer Mode**: Open Chrome and navigate to `chrome://extensions/`.
+3.  **Load Unpacked**: Enable **Developer mode** (top-right) and click **Load unpacked**.
+4.  **Select Folder**: Select the `dist` folder from the extracted files.
+5.  **Pin**: Pin the **Shift Sniper** icon to your toolbar for instant access.
 
 ---
 
-## ⚠️ Safety Warning
-This tool is for educational purposes. Use responsible polling intervals (recommended: 400ms+) to ensure the safety of your Amazon Hiring account.
+## 📖 Advanced Usage
 
-**Amazon Shift Sniper PRO** – *Secure your shift before the first click.*
+### 📋 Managing Multiple Schedules
+Instead of monitoring one job at a time, you can now paste a list of multiple job URLs into the **Additional Schedule Links** section. The extension will:
+1.  Parse each link for its `scheduleId`.
+2.  Show each ID in a scrollable list.
+3.  Automatically start polling them in the background while you stay on your main page.
+
+### ⏱️ Regular Click Feature (Burst Mode)
+For users who want even more aggression, the **Regular Click** feature allows you to set a fixed interval (from 5s to 60s). Even if a shift hasn't been detected via the API yet, the engine will perform a "blind" burst click on the "Select this job" button to ensure you are first in line.
+
+### 🔍 Diagnostic Logs
+For power users, the extension provides detailed logs in the **Browser Console (F12)**. You can track:
+*   Every successful API request.
+*   Exactly when a button was clicked.
+*   Status updates for every monitored schedule in your queue.
+
+---
+
+## 🛠️ Technology Stack
+
+*   **UI Framework**: React 18 with Tailwind CSS.
+*   **Logic Engine**: Vanilla JavaScript (ES2022) with Main World injection.
+*   **Bundling**: Webpack 5 with Production-grade minification.
+*   **State Management**: Chrome Storage Sync for persistent settings across browser restarts.
+
+---
+
+## 🛡️ Best Practices for Success
+
+*   **Recommended Interval**: Set Polling to **800ms - 1000ms** for a perfect balance of speed and safety.
+*   **Stable Session**: Ensure you are logged into your Amazon account before starting the engine.
+*   **One Window Only**: While the extension supports multi-link monitoring, keep it active in only **one tab** at a time to prevent session fragmentation.
+
+---
+© 2026 Amazon Shift Sniper Suite. Engineered for High-Performance Availability Monitoring.

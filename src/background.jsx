@@ -10,6 +10,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'PING') {
     sendResponse({ pong: true });
   }
+
+  if (message.type === 'UPDATE_BADGE') {
+    const tabId = sender.tab ? sender.tab.id : undefined;
+    chrome.action.setBadgeText({ text: message.text || "", tabId });
+    if (message.color) {
+      chrome.action.setBadgeBackgroundColor({ color: message.color, tabId });
+    }
+  }
   
   if (message.type === 'POLL_SCHEDULE') {
     const tabId = sender.tab.id;
