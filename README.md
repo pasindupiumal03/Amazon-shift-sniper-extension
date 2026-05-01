@@ -1,81 +1,48 @@
-# Amazon Shift Sniper PRO
+# Amazon Shift Sniper Extension
 
-An advanced, enterprise-grade automation suite engineered specifically for the Amazon Hiring Portal. Designed to provide candidates with a decisive advantage in securing high-demand shifts through ultra-low latency monitoring and high-frequency interaction.
+A high-performance, resilient browser extension designed for high-frequency monitoring and automated shift booking on the Amazon Hiring Portal.
 
-![Version](https://img.shields.io/badge/Version-1.2-orange?style=for-the-badge)
-![Platform](https://img.shields.io/badge/Platform-Chrome_Extension-blue?style=for-the-badge)
-![Performance](https://img.shields.io/badge/Performance-Ultra--Low_Latency-green?style=for-the-badge)
+## Recent Core Enhancements & Fixes
 
----
+### 1. High-Reliability Configuration Bridge
+Overhauled the communication between the extension and the monitoring engine to eliminate race conditions during page refreshes.
+- **Direct DOM Embedding**: Configurations are now injected directly into the script tag's data attributes.
+- **Instant Boot**: The engine reads settings (Intervals, Extra Links, Toggle State) synchronously on load.
+- **Refresh Persistence**: Monitoring targets and automation settings now persist 100% reliably across tab refreshes.
 
-## 🚀 Core Features
+### 2. Intelligent 403 Error Handling & Cooldown
+Implemented a robust protection mechanism to handle session expiration and security blocks.
+- **Auto-Pause**: If a `403 Forbidden` error is detected, the extension pauses all API requests for exactly **60 seconds**.
+- **Auto-Resume**: Monitoring automatically restarts after the 1-minute cooldown without requiring manual intervention.
+- **State Guard**: Integrated a block-flag (`is403Paused`) to prevent in-flight successful requests from prematurely clearing the error state.
 
-### ⚡ "Fast-Click" Interaction Engine
-*   **Shadow DOM Penetration**: Advanced recursive logic to bypass Amazon's Stencil.js/Shadow DOM encapsulation, targeting buttons that standard extensions can't see.
-*   **Event Flooding (Burst Mode)**: Executes a high-speed sequence of `pointerdown`, `mousedown`, `pointerup`, and `click` events (10 clicks per burst) to ensure sub-millisecond registration.
-*   **Pre-Cache Optimization**: Automatically scans and caches button references every 500ms, ensuring zero-latency response when a shift becomes available.
+### 3. Precision Status Indicators
+Refined the visual feedback system to provide clear, accurate status signals.
+- **Atomic Indicators**: The webpage status dot, the extension badge ("ON"/"ERR"), and the popup indicator are now perfectly synchronized.
+- **Visual Logic**:
+    - 🔴 **Red**: Displayed ONLY during a 403 Error/Cooldown period.
+    - 🟢 **Green**: Displayed during active monitoring, even if temporary rate limits (429) or network glitches occur.
+- **Live Sync**: Popup UI now listens to real-time storage changes to reflect the engine's health state instantly.
 
-### 🔄 Dynamic Multi-Monitor System
-*   **Bulk Link Management**: Seamlessly monitor dozens of shifts simultaneously. Supports **Bulk Paste**—simply paste a block of text containing multiple URLs, and the engine will extract them automatically.
-*   **Intelligent Schedule ID Extraction**: Automatically parses and displays specific **Schedule IDs** for every link, making it easy to track exactly what you are monitoring.
-*   **Rotating Polling Queue**: Cyclically rotates through the current page and all additional links to maximize coverage without triggering security flags.
-*   **Quick Management**: Interactive list with "Hover-to-Delete" and "Clear All" functionality for rapid configuration.
+### 4. Bulk Link Management
+Optimized the "Additional Links" feature for efficiency.
+- **Multi-Parsing**: Supports bulk pasting of URLs or raw IDs. The engine automatically extracts `jobId` and `scheduleId`.
+- **Duplicate Prevention**: Filters out existing links to maintain a clean monitoring queue.
+- **UI Persistence**: Added a scrollable sidebar with hidden professional scrollbars for managing large monitoring lists.
 
-### 🛡️ Safety & Rate-Limit Protection
-*   **Adaptive Polling (Auto-Mode)**: Dynamically adjusts polling frequency (200ms - 5000ms) based on server health and rate-limit (429) signals.
-*   **Anti-Detection Handshake**: Operates within the page's "Main World" to inherit active session tokens and CSRF headers, making requests indistinguishable from legitimate user behavior.
-*   **Automatic 403 Recovery**: Detects session expiration or Forbidden (403) errors and pauses for 60 seconds to allow the session to stabilize.
+### 5. Automation Resilience
+- **Persistent Regular Click**: The "Regular Click" feature now resumes automatically after page reloads.
+- **Token Discovery**: Enhanced the background interceptor's ability to discover and inherit valid session tokens from the main page world.
+- **No Expiration**: Removed legacy date-based expiration checks for unlimited usage.
 
-### 🎨 Premium Interface (PRO UI)
-*   **Glassmorphism Design**: A sleek, dark-mode interface built with React and Tailwind CSS.
-*   **Zero-Distraction UI**: All scrollbars are hidden (but fully functional) to maintain a clean, professional look.
-*   **Real-Time Status Feed**: Provides a live breakdown of every monitored schedule, including individual status (Active, Waiting, Error) and polling activity.
+## Technical Stack
+- **Frontend**: React (Popup), Vanilla JS (Engine, Interceptor).
+- **Styling**: Vanilla CSS with custom animations and glassmorphism.
+- **World Interaction**: Optimized for both `ISOLATED` and `MAIN` script worlds to bypass Amazon's security headers and CSRF requirements.
 
----
-
-## 📦 Installation Guide
-
-1.  **Download**: Extract the provided extension package to your computer.
-2.  **Developer Mode**: Open Chrome and navigate to `chrome://extensions/`.
-3.  **Load Unpacked**: Enable **Developer mode** (top-right) and click **Load unpacked**.
-4.  **Select Folder**: Select the `dist` folder from the extracted files.
-5.  **Pin**: Pin the **Shift Sniper** icon to your toolbar for instant access.
-
----
-
-## 📖 Advanced Usage
-
-### 📋 Managing Multiple Schedules
-Instead of monitoring one job at a time, you can now paste a list of multiple job URLs into the **Additional Schedule Links** section. The extension will:
-1.  Parse each link for its `scheduleId`.
-2.  Show each ID in a scrollable list.
-3.  Automatically start polling them in the background while you stay on your main page.
-
-### ⏱️ Regular Click Feature (Burst Mode)
-For users who want even more aggression, the **Regular Click** feature allows you to set a fixed interval (from 5s to 60s). Even if a shift hasn't been detected via the API yet, the engine will perform a "blind" burst click on the "Select this job" button to ensure you are first in line.
-
-### 🔍 Diagnostic Logs
-For power users, the extension provides detailed logs in the **Browser Console (F12)**. You can track:
-*   Every successful API request.
-*   Exactly when a button was clicked.
-*   Status updates for every monitored schedule in your queue.
-
----
-
-## 🛠️ Technology Stack
-
-*   **UI Framework**: React 18 with Tailwind CSS.
-*   **Logic Engine**: Vanilla JavaScript (ES2022) with Main World injection.
-*   **Bundling**: Webpack 5 with Production-grade minification.
-*   **State Management**: Chrome Storage Sync for persistent settings across browser restarts.
-
----
-
-## 🛡️ Best Practices for Success
-
-*   **Recommended Interval**: Set Polling to **800ms - 1000ms** for a perfect balance of speed and safety.
-*   **Stable Session**: Ensure you are logged into your Amazon account before starting the engine.
-*   **One Window Only**: While the extension supports multi-link monitoring, keep it active in only **one tab** at a time to prevent session fragmentation.
-
----
-© 2026 Amazon Shift Sniper Suite. Engineered for High-Performance Availability Monitoring.
+## How to Build
+```bash
+yarn install
+yarn build
+```
+Load the `dist` folder into your browser as an unpacked extension.
