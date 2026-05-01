@@ -5,9 +5,10 @@ import "./index.css";
 
 const Popup = () => {
     const [isEnabled, setIsEnabled] = useState(true);
+    const [isError, setIsError] = useState(false);
     const [status, setStatus] = useState("Idle");
     const [interval, setIntervalVal] = useState(800);
-    const [clickInterval, setClickInterval] = useState(0); // 0 = Off
+    const [clickInterval, setClickInterval] = useState(0);
     const [mode, setMode] = useState("auto");
     const [extraLinks, setExtraLinks] = useState("");
     const [monitoredIDs, setMonitoredIDs] = useState([]);
@@ -48,8 +49,9 @@ const Popup = () => {
     };
 
     useEffect(() => {
-        getFromStorage(["isEnabled", "status", "interval", "mode", "extraLinks", "monitoredIDs", "clickInterval"]).then((data) => {
+        getFromStorage(["isEnabled", "isError", "status", "interval", "mode", "extraLinks", "monitoredIDs", "clickInterval"]).then((data) => {
             if (data.isEnabled !== undefined) setIsEnabled(data.isEnabled);
+            if (data.isError !== undefined) setIsError(data.isError);
             if (data.status) setStatus(data.status);
             if (data.interval) setIntervalVal(data.interval);
             if (data.mode) setMode(data.mode);
@@ -61,6 +63,7 @@ const Popup = () => {
         const listener = (changes) => {
             if (changes.status) setStatus(changes.status.newValue);
             if (changes.isEnabled) setIsEnabled(changes.isEnabled.newValue);
+            if (changes.isError !== undefined) setIsError(changes.isError.newValue);
             if (changes.monitoredIDs) setMonitoredIDs(changes.monitoredIDs.newValue);
         };
         chrome.storage.onChanged.addListener(listener);
@@ -148,7 +151,7 @@ const Popup = () => {
             <div className="bg-gray-800/50 p-3 rounded-xl border border-gray-700/50 mb-4">
                 <div className="flex justify-between items-center mb-1">
                     <span className="text-gray-400 text-[10px] uppercase font-bold tracking-wider">Current Engine Status</span>
-                    <span className="text-xs">{isEnabled ? "🟢" : "🔴"}</span>
+                    <span className="text-xs">{isEnabled ? (isError ? "🔴" : "🟢") : "🔴"}</span>
                 </div>
                 <div className="text-sm font-semibold truncate text-orange-400">{status}</div>
             </div>

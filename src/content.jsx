@@ -32,6 +32,9 @@ const updateUIStatus = (isError) => {
     statusDot.style.backgroundColor = isError ? '#ef4444' : '#10b981';
     statusDot.style.boxShadow = isError ? '0 0 10px rgba(239, 68, 68, 0.5)' : '0 0 10px rgba(16, 185, 129, 0.5)';
     
+    // Persist error state so the popup's dot updates too
+    saveToStorage({ isError: isError });
+
     chrome.runtime.sendMessage({ 
         type: "UPDATE_BADGE", 
         color: isError ? '#ef4444' : '#10b981',
@@ -39,39 +42,36 @@ const updateUIStatus = (isError) => {
     });
 };
 
+
 const parseMultiSchedules = (text) => {
     if (!text) return [];
-    const lines = text.split('\n');
+    // Split by both newlines and spaces to be extra robust
+    const parts = text.split(/[\s\n]+/).filter(p => p.trim());
     const results = [];
-    const extractID = (line, key) => {
-        // Robust regex to find the ID even if it's at the start of the string
-        const regex = new RegExp(`(?:^|[?&])${key}=([^&#]*)`);
-        const match = line.match(regex);
+    
+    const extractID = (item, key) => {
+        // Try as a URL param first
+        const regex = new RegExp(`[?&]${key}=([^&#]*)`);
+        const match = item.match(regex);
         let id = match ? decodeURIComponent(match[1]) : null;
+        
+        // If not a URL param, maybe the item IS the ID itself (e.g. pasted just the ID)
+        if (!id && item.startsWith(key === 'jobId' ? 'JOB-' : 'SCH-')) {
+            id = item;
+        }
+
         if (id && id.includes('~')) id = id.split('~')[0];
         return id;
     };
-    lines.forEach(line => {
-        const sId = extractID(line, 'scheduleId');
-        const jId = extractID(line, 'jobId');
+
+    parts.forEach(part => {
+        const sId = extractID(part, 'scheduleId');
+        const jId = extractID(part, 'jobId');
         if (sId) results.push({ scheduleId: sId, jobId: jId });
     });
+    
+    log(`Successfully parsed ${results.length} schedules.`);
     return results;
-};
-
-const injectSniperEngine = () => {
-    if (document.getElementById('sniper-engine')) return;
-    const script = document.createElement('script');
-    script.id = 'sniper-engine';
-    script.src = chrome.runtime.getURL('engine.js');
-    (document.head || document.documentElement).appendChild(script);
-};
-
-const startSniper = () => {
-    injectSniperEngine();
-    createStatusDot();
-    updateUIStatus(false);
-    updateStatus("Monitoring...");
 };
 
 const stopSniperEngine = () => {
@@ -117,33 +117,39 @@ const runScanner = async () => {
     currentActiveID = currentParams.scheduleId;
 
     if (isSniperActive) {
-        startSniper();
         const extraSchedules = parseMultiSchedules(data.extraLinks);
+        
+        // Restore initial UI state for the popup immediately
         const monitoredIDs = [
             { id: currentParams.scheduleId, status: "Waiting", isCurrent: true },
             ...extraSchedules.map(s => ({ id: s.scheduleId, status: "Waiting", isCurrent: false }))
         ];
         saveToStorage({ monitoredIDs });
-
-        // Wait for engine to signal ready
-        const sendConfig = () => {
-            log("Sending configuration to engine...");
-            window.dispatchEvent(new CustomEvent('SNIPER_CONFIG', { 
-                detail: { 
-                    interval: data.interval || 800, 
-                    mode: data.mode || 'auto',
-                    clickInterval: data.clickInterval || 0,
-                    currentSchedule: currentParams,
-                    extraSchedules: extraSchedules,
-                    isSniperActive: isSniperActive
-                } 
-            }));
-            window.removeEventListener('SNIPER_READY', sendConfig);
-        };
-        window.addEventListener('SNIPER_READY', sendConfig);
         
-        // Manual trigger if engine was already loaded
-        if (document.getElementById('sniper-engine')) sendConfig();
+        const initialConfig = { 
+            interval: data.interval || 800, 
+            mode: data.mode || 'auto',
+            clickInterval: data.clickInterval || 0,
+            currentSchedule: currentParams,
+            extraSchedules: extraSchedules,
+            isSniperActive: isSniperActive
+        };
+        
+        // Inject engine with config embedded as a data attribute
+        if (!document.getElementById('sniper-engine')) {
+            const script = document.createElement('script');
+            script.id = 'sniper-engine';
+            script.src = chrome.runtime.getURL('engine.js');
+            script.setAttribute('data-config', JSON.stringify(initialConfig));
+            (document.head || document.documentElement).appendChild(script);
+        } else {
+            // If already exists, just update via event
+            window.dispatchEvent(new CustomEvent('SNIPER_CONFIG', { detail: initialConfig }));
+        }
+
+        createStatusDot();
+        updateUIStatus(false);
+        updateStatus("Monitoring...");
     }
 };
 
@@ -166,16 +172,35 @@ const init = () => {
         saveToStorage({ isEnabled: false });
     });
 
+    // Single consolidated status handler from the engine
+    window.addEventListener('SNIPER_SET_STATUS', (e) => {
+        const { isError, msg } = e.detail;
+        updateUIStatus(isError);
+        if (msg) updateStatus(msg);
+    });
+
+    // Legacy event handlers (kept for compatibility)
     window.addEventListener('SNIPER_ERROR', (e) => {
         updateUIStatus(true);
-        updateStatus(e.detail);
+        if (e.detail) updateStatus(e.detail);
+    });
+
+    window.addEventListener('SNIPER_HEALTHY', () => {
+        updateUIStatus(false);
+    });
+
+    window.addEventListener('SNIPER_STATUS_MULTI', (e) => {
+        saveToStorage({ monitoredIDs: e.detail });
     });
 
     chrome.runtime.onMessage.addListener(async (message) => {
         if (message.type === "TOGGLE_SNIPER") {
             isSniperActive = message.isEnabled; 
-            message.isEnabled ? startSniper() : stopSniperEngine();
-            if (message.isEnabled) runScanner();
+            if (isSniperActive) {
+                runScanner();
+            } else {
+                stopSniperEngine();
+            }
         }
         if (message.type === "UPDATE_CONFIG") {
             // Re-fetch isEnabled from storage if we are unsure of state
@@ -187,10 +212,8 @@ const init = () => {
             const config = { ...message.config, isSniperActive };
             if (config.extraLinks !== undefined) {
                 config.extraSchedules = parseMultiSchedules(config.extraLinks);
-                log(`Parsed ${config.extraSchedules.length} extra schedules from bulk paste.`);
             }
             
-            log("Sending configuration to engine:", config);
             window.dispatchEvent(new CustomEvent('SNIPER_CONFIG', { detail: config }));
         }
     });
@@ -199,8 +222,11 @@ const init = () => {
     chrome.storage.onChanged.addListener((changes) => {
         if (changes.isEnabled) {
             isSniperActive = changes.isEnabled.newValue;
-            isSniperActive ? startSniper() : stopSniperEngine();
-            if (isSniperActive) runScanner();
+            if (isSniperActive) {
+                runScanner();
+            } else {
+                stopSniperEngine();
+            }
         }
     });
 

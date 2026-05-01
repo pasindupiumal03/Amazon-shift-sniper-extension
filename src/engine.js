@@ -1,8 +1,11 @@
 (async () => {
     let isTerminated = false;
     
-    // Config State
-    let config = {
+    // Config State - Try to recover from script attribute first (most reliable)
+    const selfScript = document.getElementById('sniper-engine');
+    const embeddedConfig = selfScript ? JSON.parse(selfScript.getAttribute('data-config') || 'null') : null;
+    
+    let config = embeddedConfig || {
         interval: 800,
         clickInterval: 0,
         mode: 'auto',
@@ -11,10 +14,11 @@
     };
 
     // Tracking State
-    let currentInterval = 800;
+    let currentInterval = config.interval || 800;
     let pollIndex = 0;
     let monitoredList = []; 
     let consecutiveErrors = 0;
+    let is403Paused = false; // Blocks SNIPER_HEALTHY during 403 cooldown
 
     const updateUI = () => {
         window.dispatchEvent(new CustomEvent('SNIPER_STATUS_MULTI', { detail: monitoredList }));
@@ -163,7 +167,7 @@
             ? `https://${domain}/application/api/job/${target.id}?locale=${locale}`
             : `https://${domain}/application/api/job/get-schedule-details/${target.id}?locale=${locale}`;
 
-        console.log(`[ShiftSniper] Requesting status for ${target.id}...`);
+        console.log(`[ShiftSniper] Requesting ID: ${target.id} (${pollIndex % monitoredList.length}/${monitoredList.length})`);
 
         try {
             const res = await fetch(url, {
@@ -176,13 +180,20 @@
             });
 
             if (res.status === 403) {
-                console.error("[ShiftSniper] 403 Forbidden - Session might be expired");
+                console.error("[ShiftSniper] 403 Forbidden - Pausing for 1 minute...");
                 if (timer) clearInterval(timer);
+                is403Paused = true; // Block SNIPER_HEALTHY during cooldown
                 const msg = "Paused (403 Error - 1 min)";
-                window.dispatchEvent(new CustomEvent('SNIPER_STATUS', { detail: msg }));
+                
+                // Force RED immediately on all indicators
+                window.dispatchEvent(new CustomEvent('SNIPER_SET_STATUS', { detail: { isError: true, msg } }));
+                
                 setTimeout(() => {
                     if (!isTerminated) {
-                        window.dispatchEvent(new CustomEvent('SNIPER_STATUS', { detail: "Resuming..." }));
+                        console.log("[ShiftSniper] 1 minute wait over. Resuming monitoring...");
+                        is403Paused = false; // Unblock SNIPER_HEALTHY
+                        // Force GREEN before resuming
+                        window.dispatchEvent(new CustomEvent('SNIPER_SET_STATUS', { detail: { isError: false, msg: "Monitoring..." } }));
                         updateLoop();
                     }
                 }, 60000);
@@ -192,6 +203,8 @@
             if (res.status === 429) {
                 console.warn("[ShiftSniper] 429 Rate Limited - slowing down");
                 consecutiveErrors++;
+                // Stay green unless in 403 pause
+                if (!is403Paused) window.dispatchEvent(new CustomEvent('SNIPER_HEALTHY')); 
                 if (config.mode === 'auto') {
                     currentInterval = Math.min(5000, currentInterval + 500);
                     updateLoop();
@@ -201,6 +214,8 @@
 
             if (res.ok) {
                 consecutiveErrors = 0;
+                // Only signal healthy if we're NOT in a 403 cooldown
+                if (!is403Paused) window.dispatchEvent(new CustomEvent('SNIPER_HEALTHY')); 
                 const json = await res.json();
                 const data = json?.data;
                 const status = isJob ? data?.postingStatus : data?.status;
@@ -220,11 +235,13 @@
             } else {
                 console.error(`[ShiftSniper] Request failed with status ${res.status} for ${target.id}`);
                 target.status = "Error";
+                if (!is403Paused) window.dispatchEvent(new CustomEvent('SNIPER_HEALTHY')); 
                 updateUI();
             }
         } catch (e) {
             console.error(`[ShiftSniper] Exception during poll for ${target.id}:`, e);
             target.status = "Error";
+            if (!is403Paused) window.dispatchEvent(new CustomEvent('SNIPER_HEALTHY')); 
             updateUI();
         }
     };
@@ -289,7 +306,6 @@
 
     const rebuildQueue = () => {
         const list = [];
-        // Use the dynamic schedule from config, fall back to initial constants
         const current = config.currentSchedule || { jobId: JOB_ID, scheduleId: SCH_ID };
         
         if (current.jobId) {
@@ -299,16 +315,22 @@
             list.push({ id: current.scheduleId, status: "Waiting", isCurrent: true, isPolling: false });
         }
         
-        if (config.extraSchedules) {
+        if (config.extraSchedules && config.extraSchedules.length > 0) {
+            console.log(`[ShiftSniper] Adding ${config.extraSchedules.length} extra schedules to queue.`);
             config.extraSchedules.forEach(s => {
-                // Avoid duplicating the current active schedule
-                if (s.scheduleId !== current.scheduleId) {
+                if (s.jobId && s.jobId !== current.jobId && !list.some(item => item.id === s.jobId)) {
+                    list.push({ id: s.jobId, status: "Waiting", isCurrent: false, isPolling: false });
+                }
+                if (s.scheduleId && s.scheduleId !== current.scheduleId && !list.some(item => item.id === s.scheduleId)) {
                     list.push({ id: s.scheduleId, status: "Waiting", isCurrent: false, isPolling: false });
                 }
             });
+        } else {
+            console.log("[ShiftSniper] No extra schedules found in config.");
         }
         
         monitoredList = list;
+        console.log(`[ShiftSniper] Queue rebuilt. Total items: ${monitoredList.length}`);
         updateUI();
         updateLoop();
     };
